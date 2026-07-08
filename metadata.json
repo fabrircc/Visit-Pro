@@ -1,0 +1,6 @@
+{
+  "name": "VisitaFácil",
+  "description": "Roteirização otimizada de visitas, gestão de clientes, relatórios e caderno de pedidos com sincronização offline.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
