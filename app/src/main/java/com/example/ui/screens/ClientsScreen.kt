@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -717,6 +718,22 @@ fun ClientItemRow(
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
+
+                                Spacer(modifier = Modifier.width(4.dp))
+
+                                // WhatsApp button
+                                val context = LocalContext.current
+                                IconButton(
+                                    onClick = { openWhatsApp(context, client.phone) },
+                                    modifier = Modifier.size(32.dp).background(Color(0xFF25D366), CircleShape).testTag("client_row_whatsapp_btn_${client.id}")
+                                ) {
+                                    Icon(
+                                        Icons.Default.Chat,
+                                        contentDescription = "WhatsApp",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
                         }
 
@@ -758,6 +775,20 @@ private fun dialNumber(context: Context, number: String) {
         context.startActivity(intent)
     } catch (e: Exception) {
         Toast.makeText(context, "Não foi possível abrir o discador.", Toast.LENGTH_SHORT).show()
+    }
+}
+
+// WhatsApp helper
+private fun openWhatsApp(context: Context, number: String) {
+    try {
+        val sanitized = number.replace("-", "").replace(" ", "").replace("(", "").replace(")", "").replace("+", "")
+        val target = if (sanitized.length <= 11 && !sanitized.startsWith("55")) "55$sanitized" else sanitized
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=$target")).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        Toast.makeText(context, "Não foi possível abrir o WhatsApp.", Toast.LENGTH_SHORT).show()
     }
 }
 

@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -25,6 +28,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
@@ -34,6 +39,7 @@ import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.PendingActions
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -208,8 +214,11 @@ fun OrdersScreen(viewModel: MainViewModel) {
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(orders, key = { it.id }) { order ->
+                        val client = clients.find { it.id == order.clientId }
+                        val clientPhone = client?.phone ?: ""
                         OrderItemRow(
                             order = order,
+                            clientPhone = clientPhone,
                             formatCurrency = formatCurrency,
                             onStatusChange = { newStatus -> viewModel.updateOrderStatus(order, newStatus) },
                             onEdit = { showEditOrderDialog = order },
@@ -526,6 +535,7 @@ fun OrdersPipelineHeader(orders: List<Order>, formatCurrency: NumberFormat) {
 @Composable
 fun OrderItemRow(
     order: Order,
+    clientPhone: String,
     formatCurrency: NumberFormat,
     onStatusChange: (String) -> Unit,
     onEdit: () -> Unit,
@@ -606,6 +616,54 @@ fun OrderItemRow(
                     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
                     Spacer(modifier = Modifier.height(10.dp))
 
+                    if (clientPhone.isNotEmpty()) {
+                        Text("Contato do Cliente:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.outline)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val context = LocalContext.current
+                            // Dial Phone Button
+                            Row(
+                                modifier = Modifier
+                                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp))
+                                    .clickable { dialNumber(context, clientPhone) }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Call,
+                                    contentDescription = "Ligar",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text("Ligar", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+
+                            // WhatsApp Button
+                            Row(
+                                modifier = Modifier
+                                    .background(Color(0xFF25D366), RoundedCornerShape(8.dp))
+                                    .clickable { openWhatsApp(context, clientPhone) }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Chat,
+                                    contentDescription = "WhatsApp",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text("WhatsApp", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
                     Text("Avançar Categoria de Atendimento:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.outline)
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -666,5 +724,30 @@ fun getOrderStatusColor(status: String): Color {
         "Faturado" -> Color(0xFF9C27B0) // Purple
         "Entregue" -> Color(0xFF4CAF50) // Green
         else -> Color.Gray
+    }
+}
+
+private fun dialNumber(context: Context, number: String) {
+    try {
+        val sanitized = number.replace("-", "").replace(" ", "").replace("(", "").replace(")", "")
+        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$sanitized")).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        Toast.makeText(context, "Não foi possível abrir o discador.", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun openWhatsApp(context: Context, number: String) {
+    try {
+        val sanitized = number.replace("-", "").replace(" ", "").replace("(", "").replace(")", "").replace("+", "")
+        val target = if (sanitized.length <= 11 && !sanitized.startsWith("55")) "55$sanitized" else sanitized
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=$target")).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        Toast.makeText(context, "Não foi possível abrir o WhatsApp.", Toast.LENGTH_SHORT).show()
     }
 }

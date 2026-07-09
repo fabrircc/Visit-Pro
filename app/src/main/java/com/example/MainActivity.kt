@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -41,6 +42,7 @@ import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.MapRouteScreen
 import com.example.ui.screens.OrdersScreen
 import com.example.ui.screens.VisitsScreen
+import com.example.ui.screens.LoginScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.MainViewModel
 
@@ -67,119 +69,125 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector,
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainAppContent() {
-  val navController = rememberNavController()
   val viewModel: MainViewModel = viewModel()
-  val navBackStackEntry by navController.currentBackStackEntryAsState()
-  val currentRoute = navBackStackEntry?.destination?.route ?: Screen.Dashboard.route
+  val isLoggedIn by viewModel.isLoggedIn.collectAsState()
 
-  val items = listOf(
-    Screen.Dashboard,
-    Screen.Clients,
-    Screen.Visits,
-    Screen.Orders,
-    Screen.MapRoute
-  )
+  if (!isLoggedIn) {
+    LoginScreen(viewModel = viewModel)
+  } else {
+    val navController = rememberNavController()
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route ?: Screen.Dashboard.route
 
-  Scaffold(
-    modifier = Modifier.fillMaxSize(),
-    topBar = {
-      TopAppBar(
-        title = {
-          Column {
-            Text(
-              text = "VisitaPro",
-              fontWeight = FontWeight.Bold,
-              style = MaterialTheme.typography.titleLarge,
-              color = MaterialTheme.colorScheme.onSurface,
-              letterSpacing = (-0.5).sp
-            )
-            Text(
-              text = "DASHBOARD DE VENDAS",
-              fontSize = 10.sp,
-              fontWeight = FontWeight.Bold,
-              letterSpacing = 1.sp,
-              color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+    val items = listOf(
+      Screen.Dashboard,
+      Screen.Clients,
+      Screen.Visits,
+      Screen.Orders,
+      Screen.MapRoute
+    )
+
+    Scaffold(
+      modifier = Modifier.fillMaxSize(),
+      topBar = {
+        TopAppBar(
+          title = {
+            Column {
+              Text(
+                text = "VisitaPro",
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                letterSpacing = (-0.5).sp
+              )
+              Text(
+                text = "DASHBOARD DE VENDAS",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+              )
+            }
+          },
+          colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            titleContentColor = MaterialTheme.colorScheme.onSurface
+          ),
+          modifier = Modifier.testTag("app_top_bar")
+        )
+      },
+      bottomBar = {
+        NavigationBar(
+          containerColor = MaterialTheme.colorScheme.surface,
+          tonalElevation = 0.dp,
+          modifier = Modifier.testTag("app_bottom_nav_bar")
+        ) {
+          items.forEach { screen ->
+            NavigationBarItem(
+              icon = { Icon(screen.icon, contentDescription = screen.title) },
+              label = { Text(screen.title, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+              selected = currentRoute == screen.route,
+              onClick = {
+                if (currentRoute != screen.route) {
+                  navController.navigate(screen.route) {
+                    popUpTo(navController.graph.findStartDestination().id) {
+                      saveState = true
+                    }
+                    launchSingleTop = true
+                    restoreState = true
+                  }
+                }
+              },
+              modifier = Modifier.testTag(screen.tag)
             )
           }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-          containerColor = MaterialTheme.colorScheme.surface,
-          titleContentColor = MaterialTheme.colorScheme.onSurface
-        ),
-        modifier = Modifier.testTag("app_top_bar")
-      )
-    },
-    bottomBar = {
-      NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
-        modifier = Modifier.testTag("app_bottom_nav_bar")
-      ) {
-        items.forEach { screen ->
-          NavigationBarItem(
-            icon = { Icon(screen.icon, contentDescription = screen.title) },
-            label = { Text(screen.title, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-            selected = currentRoute == screen.route,
-            onClick = {
-              if (currentRoute != screen.route) {
-                navController.navigate(screen.route) {
-                  popUpTo(navController.graph.findStartDestination().id) {
-                    saveState = true
-                  }
-                  launchSingleTop = true
-                  restoreState = true
-                }
-              }
-            },
-            modifier = Modifier.testTag(screen.tag)
-          )
         }
       }
-    }
-  ) { innerPadding ->
-    NavHost(
-      navController = navController,
-      startDestination = Screen.Dashboard.route,
-      modifier = Modifier
-        .fillMaxSize()
-        .padding(innerPadding)
-    ) {
-      composable(Screen.Dashboard.route) {
-        DashboardScreen(
-          viewModel = viewModel,
-          onNavigateToMap = {
-            navController.navigate(Screen.MapRoute.route) {
-              popUpTo(navController.graph.findStartDestination().id) {
-                saveState = true
+    ) { innerPadding ->
+      NavHost(
+        navController = navController,
+        startDestination = Screen.Dashboard.route,
+        modifier = Modifier
+          .fillMaxSize()
+          .padding(innerPadding)
+      ) {
+        composable(Screen.Dashboard.route) {
+          DashboardScreen(
+            viewModel = viewModel,
+            onNavigateToMap = {
+              navController.navigate(Screen.MapRoute.route) {
+                popUpTo(navController.graph.findStartDestination().id) {
+                  saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
               }
-              launchSingleTop = true
-              restoreState = true
             }
-          }
-        )
-      }
-      composable(Screen.Clients.route) {
-        ClientsScreen(viewModel = viewModel)
-      }
-      composable(Screen.Visits.route) {
-        VisitsScreen(
-          viewModel = viewModel,
-          onNavigateToMap = {
-            navController.navigate(Screen.MapRoute.route) {
-              popUpTo(navController.graph.findStartDestination().id) {
-                saveState = true
+          )
+        }
+        composable(Screen.Clients.route) {
+          ClientsScreen(viewModel = viewModel)
+        }
+        composable(Screen.Visits.route) {
+          VisitsScreen(
+            viewModel = viewModel,
+            onNavigateToMap = {
+              navController.navigate(Screen.MapRoute.route) {
+                popUpTo(navController.graph.findStartDestination().id) {
+                  saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
               }
-              launchSingleTop = true
-              restoreState = true
             }
-          }
-        )
-      }
-      composable(Screen.Orders.route) {
-        OrdersScreen(viewModel = viewModel)
-      }
-      composable(Screen.MapRoute.route) {
-        MapRouteScreen(viewModel = viewModel)
+          )
+        }
+        composable(Screen.Orders.route) {
+          OrdersScreen(viewModel = viewModel)
+        }
+        composable(Screen.MapRoute.route) {
+          MapRouteScreen(viewModel = viewModel)
+        }
       }
     }
   }

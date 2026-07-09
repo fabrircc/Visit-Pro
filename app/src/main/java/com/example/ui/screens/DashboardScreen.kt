@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -34,6 +35,10 @@ import androidx.compose.material.icons.filled.LocalPostOffice
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -42,9 +47,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,6 +74,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
 import com.example.ui.viewmodel.MainViewModel
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 @Composable
@@ -72,6 +85,13 @@ fun DashboardScreen(viewModel: MainViewModel, onNavigateToMap: () -> Unit) {
     val visits by viewModel.visits.collectAsState()
     val orders by viewModel.orders.collectAsState()
     val notifications by viewModel.notifications.collectAsState()
+
+    val userName by viewModel.userName.collectAsState()
+    val userEmail by viewModel.userEmail.collectAsState()
+    val lastSyncTime by viewModel.lastSyncTime.collectAsState()
+    val isSyncing by viewModel.isSyncing.collectAsState()
+
+    var showSyncControls by remember { mutableStateOf(false) }
 
     // Calculations for productivity KPIs
     val totalClients = clients.size
@@ -95,6 +115,18 @@ fun DashboardScreen(viewModel: MainViewModel, onNavigateToMap: () -> Unit) {
 
     val formatCurrency = NumberFormat.getCurrencyInstance(Locale("pt", "BR"))
 
+    // Generate initials for the avatar
+    val initials = if (userName.isNotBlank()) {
+        val parts = userName.trim().split("\\s+".toRegex())
+        if (parts.size >= 2) {
+            (parts[0].take(1) + parts[1].take(1)).uppercase()
+        } else {
+            parts[0].take(2).uppercase()
+        }
+    } else {
+        "C"
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -114,17 +146,23 @@ fun DashboardScreen(viewModel: MainViewModel, onNavigateToMap: () -> Unit) {
             ) {
                 Column {
                     Text(
-                        text = "Olá, Consultor!",
+                        text = "Olá, $userName!",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
-                        letterSpacing = (-0.5).sp
+                        letterSpacing = (-0.5).sp,
+                        modifier = Modifier.testTag("dashboard_welcome_text")
                     )
                     Text(
-                        text = "Painel de Atividades • Sincronizado",
+                        text = if (lastSyncTime > 0) {
+                            val sdf = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
+                            "Sincronizado: ${sdf.format(Date(lastSyncTime))}"
+                        } else {
+                            "Google Drive • Offline"
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
                 
@@ -150,20 +188,131 @@ fun DashboardScreen(viewModel: MainViewModel, onNavigateToMap: () -> Unit) {
                         )
                     }
 
-                    // Sleek Profile Avatar JD
+                    // Sleek Profile Avatar
                     Box(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.onSurface),
+                            .background(MaterialTheme.colorScheme.primary)
+                            .clickable { showSyncControls = !showSyncControls }
+                            .testTag("profile_avatar_btn"),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "JD",
-                            color = MaterialTheme.colorScheme.surface,
-                            fontSize = 12.sp,
+                            text = initials,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+                }
+            }
+        }
+
+        // Expanded Google Drive Account and Sync Drawer Section
+        item {
+            AnimatedVisibility(
+                visible = showSyncControls,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("sync_controls_card"),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.CloudSync,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = "Conta Google conectada",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = userEmail,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.1f))
+
+                        if (isSyncing) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Sincronizando...", fontSize = 13.sp)
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        viewModel.backupToGoogleDrive { success, msg ->
+                                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f).testTag("backup_drive_btn"),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Fazer Backup", fontSize = 12.sp)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        viewModel.restoreFromGoogleDrive { success, msg ->
+                                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f).testTag("restore_drive_btn"),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Restaurar", fontSize = 12.sp)
+                                }
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                viewModel.logout()
+                                Toast.makeText(context, "Sessão encerrada com sucesso", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.fillMaxWidth().height(40.dp).testTag("logout_btn"),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Sair da Conta", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }

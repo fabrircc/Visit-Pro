@@ -43,6 +43,174 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val clients: StateFlow<List<Client>>
     val visits: StateFlow<List<Visit>>
     val orders: StateFlow<List<Order>>
+    
+    // Google Authentication & Cloud Sync State
+    private val sharedPrefs = application.getSharedPreferences("visita_facil_auth_prefs", Context.MODE_PRIVATE)
+
+    private val _isLoggedIn = MutableStateFlow(sharedPrefs.getBoolean("is_logged_in", false))
+    val isLoggedIn = _isLoggedIn.asStateFlow()
+
+    private val _userEmail = MutableStateFlow(sharedPrefs.getString("user_email", "") ?: "")
+    val userEmail = _userEmail.asStateFlow()
+
+    private val _userName = MutableStateFlow(sharedPrefs.getString("user_name", "") ?: "")
+    val userName = _userName.asStateFlow()
+
+    private val _userToken = MutableStateFlow(sharedPrefs.getString("user_token", "") ?: "")
+    val userToken = _userToken.asStateFlow()
+
+    private val _lastSyncTime = MutableStateFlow(sharedPrefs.getLong("last_sync_time", 0L))
+    val lastSyncTime = _lastSyncTime.asStateFlow()
+
+    private val _isSyncing = MutableStateFlow(false)
+    val isSyncing = _isSyncing.asStateFlow()
+
+    fun loginWithGmail(email: String, name: String, token: String = "") {
+        viewModelScope.launch {
+            val sanitizedToken = if (token.isEmpty()) "demo_${System.currentTimeMillis()}" else token
+            sharedPrefs.edit().apply {
+                putBoolean("is_logged_in", true)
+                putString("user_email", email)
+                putString("user_name", name)
+                putString("user_token", sanitizedToken)
+                apply()
+            }
+            _isLoggedIn.value = true
+            _userEmail.value = email
+            _userName.value = name
+            _userToken.value = sanitizedToken
+
+            // If we have data on the cloud, restore them. Otherwise backup our existing database.
+            com.example.data.sync.GoogleSyncManager.restoreFromDrive(
+                context = getApplication(),
+                token = sanitizedToken,
+                email = email
+            ) { success, msg, jsonContent ->
+                if (success && jsonContent != null) {
+                    restoreDatabase(jsonContent)
+                } else {
+                    // Back up initial database to Drive
+                    backupToGoogleDrive()
+                }
+            }
+        }
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            sharedPrefs.edit().apply {
+                putBoolean("is_logged_in", false)
+                putString("user_email", "")
+                putString("user_name", "")
+                putString("user_token", "")
+                putLong("last_sync_time", 0L)
+                apply()
+            }
+            _isLoggedIn.value = false
+            _userEmail.value = ""
+            _userName.value = ""
+            _userToken.value = ""
+            _lastSyncTime.value = 0L
+
+            // Clear database so it's clean for the next user session, and seed on reload
+            repository.deleteAllClients()
+            repository.deleteAllVisits()
+            repository.deleteAllOrders()
+            seedDefaultClients()
+        }
+    }
+
+    fun backupToGoogleDrive(onComplete: ((Boolean, String) -> Unit)? = null) {
+        val email = _userEmail.value
+        val token = _userToken.value
+        if (email.isEmpty()) return
+
+        _isSyncing.value = true
+        viewModelScope.launch {
+            val allClients = clients.value
+            val allVisits = visits.value
+            val allOrders = orders.value
+
+            com.example.data.sync.GoogleSyncManager.backupToDrive(
+                context = getApplication(),
+                token = token,
+                clients = allClients,
+                visits = allVisits,
+                orders = allOrders,
+                email = email
+            ) { success, msg ->
+                _isSyncing.value = false
+                if (success) {
+                    val now = System.currentTimeMillis()
+                    _lastSyncTime.value = now
+                    sharedPrefs.edit().putLong("last_sync_time", now).apply()
+                }
+                onComplete?.invoke(success, msg)
+            }
+        }
+    }
+
+    fun restoreFromGoogleDrive(onComplete: ((Boolean, String) -> Unit)? = null) {
+        val email = _userEmail.value
+        val token = _userToken.value
+        if (email.isEmpty()) return
+
+        _isSyncing.value = true
+        viewModelScope.launch {
+            com.example.data.sync.GoogleSyncManager.restoreFromDrive(
+                context = getApplication(),
+                token = token,
+                email = email
+            ) { success, msg, jsonContent ->
+                if (success && jsonContent != null) {
+                    restoreDatabase(jsonContent)
+                    onComplete?.invoke(true, msg)
+                } else {
+                    _isSyncing.value = false
+                    onComplete?.invoke(false, msg)
+                }
+            }
+        }
+    }
+
+    private fun restoreDatabase(jsonContent: String) {
+        viewModelScope.launch {
+            try {
+                val restoredClients = com.example.data.sync.DatabaseJsonSerializer.deserializeClients(jsonContent)
+                val restoredVisits = com.example.data.sync.DatabaseJsonSerializer.deserializeVisits(jsonContent)
+                val restoredOrders = com.example.data.sync.DatabaseJsonSerializer.deserializeOrders(jsonContent)
+
+                if (restoredClients.isNotEmpty()) {
+                    repository.deleteAllClients()
+                    repository.insertClients(restoredClients)
+                }
+                
+                repository.deleteAllVisits()
+                for (v in restoredVisits) {
+                    repository.insertVisit(v)
+                }
+
+                repository.deleteAllOrders()
+                for (o in restoredOrders) {
+                    repository.insertOrder(o)
+                }
+
+                val now = System.currentTimeMillis()
+                _lastSyncTime.value = now
+                sharedPrefs.edit().putLong("last_sync_time", now).apply()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isSyncing.value = false
+            }
+        }
+    }
+
+    private fun triggerAutoSync() {
+        if (_isLoggedIn.value) {
+            backupToGoogleDrive()
+        }
+    }
 
     // Filtering states
     private val _searchQuery = MutableStateFlow("")
@@ -244,18 +412,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     longitude = lng
                 )
             )
+            triggerAutoSync()
         }
     }
 
     fun updateClient(client: Client) {
         viewModelScope.launch {
             repository.updateClient(client)
+            triggerAutoSync()
         }
     }
 
     fun deleteClient(client: Client) {
         viewModelScope.launch {
             repository.deleteClient(client)
+            triggerAutoSync()
         }
     }
 
@@ -274,6 +445,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     notes = notes
                 )
             )
+            triggerAutoSync()
         }
     }
 
@@ -286,12 +458,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     notes = notes
                 )
             )
+            triggerAutoSync()
         }
     }
 
     fun deleteVisit(visit: Visit) {
         viewModelScope.launch {
             repository.deleteVisit(visit)
+            triggerAutoSync()
         }
     }
 
@@ -314,18 +488,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 repository.updateOrder(order)
             }
+            triggerAutoSync()
         }
     }
 
     fun updateOrderStatus(order: Order, newStatus: String) {
         viewModelScope.launch {
             repository.updateOrder(order.copy(status = newStatus))
+            triggerAutoSync()
         }
     }
 
     fun deleteOrder(order: Order) {
         viewModelScope.launch {
             repository.deleteOrder(order)
+            triggerAutoSync()
         }
     }
 
